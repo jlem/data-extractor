@@ -132,7 +132,6 @@ with st.sidebar:
         index=0
     )
     
-    # Toggle to force OCR scan on PDF files if selected
     ocr_pdf = False
     if source_category == "Upload Files (PDF, PNG, JPG)":
         ocr_pdf = st.checkbox("Force OCR for PDF files (use Vision)", value=False,
@@ -155,7 +154,6 @@ with left_col:
     
     sources = []
     
-    # Render inputs based on source category selection
     if source_category == "Upload Files (PDF, PNG, JPG)":
         uploaded_files = st.file_uploader(
             "Upload files (Multiple supported)", 
@@ -168,7 +166,6 @@ with left_col:
                 with open(path, "wb") as out:
                     out.write(f.getbuffer())
                 
-                # Determine precise source type
                 ext = os.path.splitext(f.name)[1].lower()
                 if ext == ".pdf":
                     t = "pdf_scanned" if ocr_pdf else "pdf_digital"
@@ -242,14 +239,27 @@ with left_col:
                         "ingested_docs": [],
                         "table_name": "",
                         "columns": [],
+                        "document_roles": [],
                         "extracted_rows": [],
-                        "log": []
+                        "log": [],
+                        "job_id": "",
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "ingest_duration": 0.0,
+                        "schema_architect_duration": 0.0,
+                        "db_setup_duration": 0.0,
+                        "extraction_duration": 0.0,
+                        "db_load_duration": 0.0,
+                        "total_duration": 0.0
                     }
                     
                     # 3. Stream graph steps to update UI logs dynamically
+                    final_state = {}
                     for output in workflow.stream(initial_state):
                         node_name = list(output.keys())[0]
                         node_state = output[node_name]
+                        
+                        final_state.update(node_state)
                         
                         # Grab updated logs from the node state changes
                         node_logs = node_state.get("log", [])
@@ -263,6 +273,34 @@ with left_col:
                             st.session_state["last_table_name"] = node_state["table_name"]
                             
                     st.success("🎉 Agent workflow completed successfully!")
+                    
+                    # 4. Display performance metrics summary card in UI
+                    if "total_duration" in final_state:
+                        prompt_t = final_state.get("prompt_tokens", 0)
+                        comp_t = final_state.get("completion_tokens", 0)
+                        tot_t = prompt_t + comp_t
+                        
+                        st.markdown(f"""
+                        <div class="card" style="border-left: 5px solid #22c55e; padding: 1.25rem;">
+                            <h3 style="margin-top:0; color:#22c55e; font-size:1.15rem;">⏱️ Job Performance Metrics</h3>
+                            <table style="width:100%; border:none; font-size:0.85rem; line-height: 1.6;">
+                                <tr><td>Ingestion Duration:</td><td style="text-align:right;"><b>{final_state.get('ingest_duration', 0.0):.3f}s</b></td></tr>
+                                <tr><td>Schema Design Duration:</td><td style="text-align:right;"><b>{final_state.get('schema_architect_duration', 0.0):.3f}s</b></td></tr>
+                                <tr><td>Database Setup Duration:</td><td style="text-align:right;"><b>{final_state.get('db_setup_duration', 0.0):.3f}s</b></td></tr>
+                                <tr><td>Data Extraction Duration:</td><td style="text-align:right;"><b>{final_state.get('extraction_duration', 0.0):.3f}s</b></td></tr>
+                                <tr><td>Database Loading Duration:</td><td style="text-align:right;"><b>{final_state.get('db_load_duration', 0.0):.3f}s</b></td></tr>
+                                <tr style="border-top:1px solid #e2e8f0; height: 10px;"><td></td><td></td></tr>
+                                <tr>
+                                    <td><b>Total Processing Time:</b></td>
+                                    <td style="text-align:right;"><span style="background-color:#22c55e; color:white; padding: 2px 6px; border-radius: 4px; font-weight:700;"><b>{final_state.get('total_duration', 0.0):.3f}s</b></span></td>
+                                </tr>
+                                <tr>
+                                    <td><b>Gemini Token Usage:</b></td>
+                                    <td style="text-align:right;">Prompt: <b>{prompt_t}</b> | Comp: <b>{comp_t}</b> | Total: <b>{tot_t}</b></td>
+                                </tr>
+                            </table>
+                        </div>
+                        """, unsafe_allow_html=True)
                 except Exception as ex:
                     st.error(f"Execution Error: {str(ex)}")
                     st.session_state["console_logs"].append(f"❌ Error: {str(ex)}")
@@ -273,10 +311,8 @@ with left_col:
 with right_col:
     st.subheader("📋 Dynamic Data Viewer")
     
-    # Grab the last table generated, or allow querying historically
     table_to_query = st.session_state["last_table_name"]
     
-    # Check what dynamic tables exist in our SQLite DB to let the user select
     all_tables = []
     if os.path.exists(DB_PATH):
         try:
@@ -286,7 +322,7 @@ with right_col:
             all_tables = [row[0] for row in cursor.fetchall()]
             conn.close()
         except Exception as db_err:
-            st.warning(f"Could not load historical tables: {str(db_err)}")
+            st.warning(f"Could not load tables: {str(db_err)}")
             
     if all_tables:
         select_index = 0
@@ -300,23 +336,18 @@ with right_col:
 
     if selected_table:
         try:
-            # Query the table
             conn = sqlite3.connect(DB_PATH)
             df = pd.read_sql_query(f"SELECT * FROM {selected_table}", conn)
             
-            # Fetch Schema columns to show column definitions
             cursor = conn.cursor()
             cursor.execute(f"PRAGMA table_info({selected_table})")
             columns_info = cursor.fetchall()
             conn.close()
             
-            # Display stats
             st.markdown(f"**Total Records:** `{len(df)}` | **SQLite Table:** `{selected_table}`")
             
-            # Render interactive data table (sortable, filterable, scrollable)
             st.dataframe(df, use_container_width=True)
             
-            # Display Table Schema details in an expander
             with st.expander("🛠️ Inferred Schema Specifications"):
                 schema_df = pd.DataFrame([
                     {"Column ID": col[0], "Name": col[1], "Data Type": col[2], "Primary Key": bool(col[5])}
@@ -324,7 +355,6 @@ with right_col:
                 ])
                 st.table(schema_df)
                 
-            # Download Data button
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download Data as CSV",

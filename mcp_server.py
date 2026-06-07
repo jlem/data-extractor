@@ -127,6 +127,30 @@ def db_execute(query: str) -> str:
         return f"Database error: {str(e)}"
 
 @mcp.tool()
+def db_execute_many(query: str, params: list) -> str:
+    """
+    Executes a SQL query against the SQLite database many times with a list of parameter tuples.
+    Use this for bulk insertions inside a single transaction.
+    
+    Args:
+        query: The INSERT query with placeholders (e.g. INSERT INTO table (a) VALUES (?)).
+        params: A list of tuples, where each tuple represents a row's values.
+        
+    Returns:
+        'Success' or an error message.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.executemany(query, params)
+        conn.commit()
+        conn.close()
+        return "Success"
+    except Exception as e:
+        return f"Database error: {str(e)}"
+
+
+@mcp.tool()
 def db_query(query: str) -> list[dict]:
     """
     Queries the local SQLite database and returns the rows as a list of dictionaries.

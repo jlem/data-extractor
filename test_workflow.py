@@ -135,6 +135,19 @@ def main():
             print(f"Number of columns: {len(final_state.get('columns', []))}")
             print(f"Number of extracted rows: {len(extracted_rows)}")
             
+            # Print performance metrics
+            if "total_duration" in final_state:
+                print("\nPerformance Metrics:")
+                print(f"  - Ingestion: {final_state.get('ingest_duration', 0.0):.3f}s")
+                print(f"  - Schema Design: {final_state.get('schema_architect_duration', 0.0):.3f}s")
+                print(f"  - Database Setup: {final_state.get('db_setup_duration', 0.0):.3f}s")
+                print(f"  - Data Extraction: {final_state.get('extraction_duration', 0.0):.3f}s")
+                print(f"  - Database Loading: {final_state.get('db_load_duration', 0.0):.3f}s")
+                print(f"  - Total Duration: {final_state.get('total_duration', 0.0):.3f}s")
+                prompt_t = final_state.get('prompt_tokens', 0)
+                comp_t = final_state.get('completion_tokens', 0)
+                print(f"  - Token Usage: Prompt: {prompt_t} | Completion: {comp_t} | Total: {prompt_t + comp_t}")
+            
             # Verify the database state
             verify_database(table_name)
         else:
