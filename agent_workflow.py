@@ -547,8 +547,8 @@ def data_extraction_node(state: AgentState) -> Dict[str, Any]:
     roles_map = {r["source_name"]: r for r in document_roles}
     
     # Initialize LLM and semaphore
-    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.1, google_api_key=api_key)
-    semaphore = asyncio.Semaphore(3)
+    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.1, google_api_key=api_key, thinking_budget=0)
+    semaphore = asyncio.Semaphore(6)
     
     # Track LLM token usage using a single aggregated callback
     token_callback = TokenUsageCallback()
