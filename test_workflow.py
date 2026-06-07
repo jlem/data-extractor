@@ -17,7 +17,7 @@ def verify_database(table_name):
     print_banner(f"Inspecting SQLite Table: '{table_name}'")
     db_path = os.path.abspath("extracted_data.db")
     if not os.path.exists(db_path):
-        print("❌ SQLite Database not found!")
+        print("[ERROR] SQLite Database not found!")
         return
 
     try:
@@ -45,34 +45,55 @@ def verify_database(table_name):
             
         conn.close()
     except Exception as e:
-        print(f"❌ Database verification error: {str(e)}")
+        print(f"[ERROR] Database verification error: {str(e)}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Test Agentic PDF / URL extractor workflow.")
+    parser = argparse.ArgumentParser(description="Test Multi-Source Agentic extractor workflow.")
     parser.add_argument(
-        "--type", 
-        choices=["pdf_digital", "pdf_scanned", "image", "url"], 
+        "--types", 
         required=True, 
-        help="Type of input source (pdf_digital, pdf_scanned, image, url)"
+        help="Comma-separated list of types (e.g. url,pdf_digital)"
     )
     parser.add_argument(
-        "--path", 
+        "--paths", 
         required=True, 
-        help="Local file path or website URL"
+        help="Comma-separated list of local file paths or website URLs matching the types"
+    )
+    parser.add_argument(
+        "--instructions", 
+        default="", 
+        help="Custom organization or data cleaning instructions"
+    )
+    parser.add_argument(
+        "--table", 
+        default="", 
+        help="Optional custom table name"
     )
     
     args = parser.parse_args()
     
+    # Parse comma separated variables
+    types = [t.strip() for t in args.types.split(",") if t.strip()]
+    paths = [p.strip() for p in args.paths.split(",") if p.strip()]
+    
+    if len(types) != len(paths):
+        print(f"[ERROR] Number of types ({len(types)}) does not match number of paths ({len(paths)}).")
+        return
+        
+    sources = [{"type": t, "path": p} for t, p in zip(types, paths)]
+    
     # Check for api key
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("⚠️ Warning: GEMINI_API_KEY or GOOGLE_API_KEY env variables not found.")
+        print("[WARNING] GEMINI_API_KEY or GOOGLE_API_KEY env variables not found.")
         print("Please set your API key in a '.env' file or your shell before running.")
         return
 
-    print_banner("Starting LangGraph Extraction Pipeline")
-    print(f"Input Type: {args.type}")
-    print(f"Input Path: {args.path}")
+    print_banner("Starting Multi-Source Ingest Pipeline")
+    print(f"Number of sources: {len(sources)}")
+    print(f"Instructions: '{args.instructions}'")
+    if args.table:
+        print(f"Custom Target Table: '{args.table}'")
     
     try:
         # Compile workflow
@@ -80,10 +101,10 @@ def main():
         
         # Set up initial state
         initial_state = {
-            "source_type": args.type,
-            "source_path": args.path,
-            "image_paths": [],
-            "extracted_text": "",
+            "sources": sources,
+            "user_instructions": args.instructions,
+            "custom_table_name": args.table,
+            "ingested_docs": [],
             "table_name": "",
             "columns": [],
             "extracted_rows": [],
@@ -94,11 +115,10 @@ def main():
         print("\nRunning workflow graph...")
         final_state = {}
         for step in workflow.stream(initial_state):
-            # Print node completion details
             node_name = list(step.keys())[0]
-            print(f"✔️ Finished Node: [{node_name}]")
+            print(f"[OK] Finished Node: [{node_name}]")
             
-            # Merge the step's changes into our accumulated state
+            # Merge step state changes
             final_state.update(step[node_name])
             
             # Print latest logs
@@ -118,10 +138,10 @@ def main():
             # Verify the database state
             verify_database(table_name)
         else:
-            print("❌ Error: No table name was inferred by the Schema Architect.")
+            print("[ERROR] No table name was inferred by the Schema Architect.")
             
     except Exception as e:
-        print(f"\n❌ Pipeline runtime execution failed: {str(e)}")
+        print(f"\n[ERROR] Pipeline runtime execution failed: {str(e)}")
 
 if __name__ == "__main__":
     main()

@@ -6,7 +6,7 @@ from agent_workflow import create_workflow
 
 # Page Configuration
 st.set_page_config(
-    page_title="Agentic Data Ingest & Schema Builder",
+    page_title="Agentic Multi-Source Data Extractor",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -24,7 +24,7 @@ st.markdown("""
     
     /* Title and Header Gradients */
     .title-container {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         padding: 2.5rem;
         border-radius: 16px;
         color: white;
@@ -69,7 +69,7 @@ st.markdown("""
         font-family: 'Courier New', Courier, monospace;
         padding: 1.25rem;
         border-radius: 8px;
-        border-left: 4px solid #0284c7;
+        border-left: 4px solid #4f46e5;
         max-height: 400px;
         overflow-y: auto;
         font-size: 0.9rem;
@@ -80,38 +80,19 @@ st.markdown("""
     
     /* Custom button enhancements */
     .stButton>button {
-        background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         color: white !important;
         border: none;
         padding: 0.6rem 1.8rem;
         border-radius: 8px;
         font-weight: 600;
         transition: all 0.2s ease-in-out;
-        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);
+        box-shadow: 0 4px 6px rgba(99, 102, 241, 0.2);
     }
     
     .stButton>button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
-    }
-    
-    /* Badges */
-    .badge {
-        display: inline-block;
-        padding: 0.25em 0.6em;
-        font-size: 75%;
-        font-weight: 700;
-        line-height: 1;
-        text-align: center;
-        white-space: nowrap;
-        vertical-align: baseline;
-        border-radius: 0.375rem;
-        margin-right: 0.5rem;
-    }
-    
-    .badge-primary {
-        background-color: #dbeafe;
-        color: #1e40af;
+        box-shadow: 0 6px 12px rgba(99, 102, 241, 0.3);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -119,8 +100,8 @@ st.markdown("""
 # Application Header Banner
 st.markdown("""
 <div class="title-container">
-    <h1>📊 Agentic Data Extractor & Schema Architect</h1>
-    <p>Upload files (digital, scanned PDFs or images) or paste web links. Watch AI agents dynamically architect SQL tables and extract records.</p>
+    <h1>📊 Agentic Multi-Source Data Extractor</h1>
+    <p>Ingest multiple PDFs/images and websites, organize them using custom instructions, and build SQLite tables.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -144,14 +125,18 @@ with st.sidebar:
         os.environ["GEMINI_API_KEY"] = api_key_input
 
     st.markdown("---")
-    st.subheader("📁 Ingestion Source")
-    source_type = st.radio(
-        "Select Data Source Type:",
-        options=["Digital-native PDF", "Scanned PDF (OCR)", "Image", "Web Page URL"],
+    st.subheader("📁 Ingestion Category")
+    source_category = st.radio(
+        "Select Source Format:",
+        options=["Upload Files (PDF, PNG, JPG)", "Web Page URLs"],
         index=0
     )
     
-    st.info("💡 **Digital-native PDF** reads embedded text objects directly. **Scanned PDF** uses multimodal visual recognition on generated page layouts.")
+    # Toggle to force OCR scan on PDF files if selected
+    ocr_pdf = False
+    if source_category == "Upload Files (PDF, PNG, JPG)":
+        ocr_pdf = st.checkbox("Force OCR for PDF files (use Vision)", value=False,
+                              help="Check this if the PDFs are scanned images or drawings rather than searchable digital text.")
 
 # Main Application Layout split into 2 Columns
 left_col, right_col = st.columns([1, 1])
@@ -164,46 +149,65 @@ if "console_logs" not in st.session_state:
 
 # --- LEFT COLUMN: INPUTS AND RUN CONSOLE ---
 with left_col:
-    st.subheader("📥 Source Input")
+    st.subheader("📥 Source Inputs & Instructions")
     
-    # Input container Card
     st.markdown('<div class="card">', unsafe_allow_html=True)
     
-    source_path = ""
-    source_type_code = ""
+    sources = []
     
-    if source_type == "Digital-native PDF":
-        source_type_code = "pdf_digital"
-        uploaded_file = st.file_uploader("Upload Digital PDF", type=["pdf"])
-        if uploaded_file:
-            source_path = os.path.join("temp_uploads", uploaded_file.name)
-            with open(source_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+    # Render inputs based on source category selection
+    if source_category == "Upload Files (PDF, PNG, JPG)":
+        uploaded_files = st.file_uploader(
+            "Upload files (Multiple supported)", 
+            type=["pdf", "png", "jpg", "jpeg"], 
+            accept_multiple_files=True
+        )
+        if uploaded_files:
+            for f in uploaded_files:
+                path = os.path.join("temp_uploads", f.name)
+                with open(path, "wb") as out:
+                    out.write(f.getbuffer())
                 
-    elif source_type == "Scanned PDF (OCR)":
-        source_type_code = "pdf_scanned"
-        uploaded_file = st.file_uploader("Upload Scanned PDF", type=["pdf"])
-        if uploaded_file:
-            source_path = os.path.join("temp_uploads", uploaded_file.name)
-            with open(source_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+                # Determine precise source type
+                ext = os.path.splitext(f.name)[1].lower()
+                if ext == ".pdf":
+                    t = "pdf_scanned" if ocr_pdf else "pdf_digital"
+                else:
+                    t = "image"
+                    
+                sources.append({"type": t, "path": path})
                 
-    elif source_type == "Image":
-        source_type_code = "image"
-        uploaded_file = st.file_uploader("Upload Table Screenshot/Image", type=["png", "jpg", "jpeg"])
-        if uploaded_file:
-            source_path = os.path.join("temp_uploads", uploaded_file.name)
-            with open(source_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+    elif source_category == "Web Page URLs":
+        urls_input = st.text_area(
+            "Enter URLs (One per line)", 
+            placeholder="https://en.wikipedia.org/wiki/List_of_countries_by_GDP_(nominal)\nhttps://en.wikipedia.org/wiki/List_of_countries_by_population_(United_Nations)"
+        )
+        if urls_input:
+            urls = [u.strip() for u in urls_input.split("\n") if u.strip()]
+            for u in urls:
+                sources.append({"type": "url", "path": u})
                 
-    elif source_type == "Web Page URL":
-        source_type_code = "url"
-        source_path = st.text_input("Enter Webpage URL", placeholder="https://en.wikipedia.org/wiki/List_of_countries_by_GDP_(nominal)")
-        
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Custom Instructions Card
+    st.subheader("✍️ Organization Guidelines")
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    
+    user_instructions = st.text_area(
+        "Enter custom instructions for how the data should be organized:",
+        placeholder="e.g. Standardize date columns to YYYY-MM-DD. Convert names to uppercase. Filter out rows where total cost is 0. Ensure currency columns are REAL.",
+        height=100
+    )
+    
+    custom_table_name = st.text_input(
+        "Destination Database Table Name (Optional)",
+        placeholder="e.g. combined_invoices_data"
+    )
+    
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Button to Trigger Pipeline
-    run_btn = st.button("🚀 Run Agentic Pipeline", disabled=not source_path)
+    run_btn = st.button("🚀 Run Agentic Pipeline", disabled=len(sources) == 0)
     
     st.subheader("🕵️ Agent Active Console Logs")
     console_placeholder = st.empty()
@@ -217,7 +221,7 @@ with left_col:
 
     # Execution Action Loop
     if run_btn:
-        st.session_state["console_logs"] = ["Initializing Agent Workflow..."]
+        st.session_state["console_logs"] = ["Initializing Multi-Source Agent Workflow..."]
         console_placeholder.markdown(f'<div class="console-box">&gt; {st.session_state["console_logs"][0]}</div>', unsafe_allow_html=True)
         
         # Verify API key exists
@@ -232,10 +236,10 @@ with left_col:
                     
                     # 2. Setup initial state
                     initial_state = {
-                        "source_type": source_type_code,
-                        "source_path": source_path,
-                        "image_paths": [],
-                        "extracted_text": "",
+                        "sources": sources,
+                        "user_instructions": user_instructions,
+                        "custom_table_name": custom_table_name,
+                        "ingested_docs": [],
                         "table_name": "",
                         "columns": [],
                         "extracted_rows": [],
@@ -244,7 +248,6 @@ with left_col:
                     
                     # 3. Stream graph steps to update UI logs dynamically
                     for output in workflow.stream(initial_state):
-                        # The stream yields outputs from each node as {"node_name": {state_changes}}
                         node_name = list(output.keys())[0]
                         node_state = output[node_name]
                         
@@ -286,14 +289,13 @@ with right_col:
             st.warning(f"Could not load historical tables: {str(db_err)}")
             
     if all_tables:
-        # If a new table was just created, prioritize selecting it in the dropdown
         select_index = 0
         if table_to_query in all_tables:
             select_index = all_tables.index(table_to_query)
             
         selected_table = st.selectbox("Select SQLite Table to View:", options=all_tables, index=select_index)
     else:
-        st.info("No databases tables extracted yet. Run a pipeline on a PDF/image first.")
+        st.info("No database tables extracted yet. Run a pipeline first.")
         selected_table = None
 
     if selected_table:
