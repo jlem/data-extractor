@@ -1,0 +1,27 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables (API Keys)
+.env
+
+# Application databases & local storage
+*.db
+*.sqlite3
+temp_uploads/
+temp_images/
+
+# Streamlit config and cache
+.streamlit/
+
+# IDE files
+.vscode/
+.idea/
+.project
+.pydevproject
